@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 # Chinese Recipe Assistant - MVP 1.0
 
-**Version:** 1.0  
-**Date:** March 4, 2026  
+**Version:** 1.1  
+**Date:** March 5, 2026  
 **Author:** Product Manager  
 **Status:** Ready for Development  
 
@@ -33,13 +33,22 @@ Singaporean families with domestic helpers spend **30-45 minutes daily** searchi
 An AI-powered web application that:
 1. Generates personalized Chinese meal plans in seconds
 2. Creates consolidated shopping lists automatically
-3. Provides video links with instructions in multiple languages
+3. Provides **verified** YouTube video links — never hallucinated, always works
 4. Handles dietary preferences and constraints
-5. Optimizes leftover ingredients
+5. Remembers your personal taste profile — knows you love spicy noodles without being told every time
 
 ### Key Value Proposition
 
-**"From 30 minutes to 2 minutes: Plan your week's Chinese meals instantly"**
+**"From 30 minutes to 2 minutes: Plan your week's Chinese meals instantly — and it actually knows what you like"**
+
+### Key Differentiators vs. ChatGPT
+| | ChatGPT | This App |
+|---|---|---|
+| YouTube links | Hallucinated, often broken | Manually verified, always works |
+| Knows your preferences | Forgets after every chat | Remembers forever (taste profile) |
+| Avoids repeats | No memory | Tracks 14-day meal history |
+| Helper-ready output | Generic text | Formatted WhatsApp card |
+| Recipe variety | Generic suggestions | 200-500 curated Chinese recipes |
 
 ---
 
@@ -349,93 +358,83 @@ Response:
 - Use sentence-transformers for embeddings (all-MiniLM-L6-v2)
 - Index on: name, description, ingredients, cuisine, tags
 - Retrieval: Top 10-15 most relevant recipes per query
+- **All YouTube URLs must be verified before loading into database**
+  - Use YouTube oEmbed endpoint (no API key needed): `GET https://www.youtube.com/oembed?url={url}&format=json`
+  - HTTP 200 = valid; HTTP 404 = dead/private — reject these
+  - Store `video_id` separately (not full URL) for reliable thumbnail and embed
+  - Run verification script monthly as a health check
+  - If a video goes dead post-launch, show fallback: `"Search YouTube: {recipe_name} {channel_name}"`
+  - Display channel name on every recipe card as a trust signal
 
 ---
 
-#### F4: Leftover Optimizer
-**Description:** Suggest recipes using leftover ingredients
-
-**Functional Requirements:**
-- Accept list of leftover ingredients
-- Search recipes that use those ingredients
-- Prioritize recipes using MORE of the leftover items
-- Show what additional ingredients needed
-- Support common leftovers:
-  - Rice (white, fried, day-old)
-  - Proteins (chicken, pork, beef)
-  - Vegetables (bok choy, cabbage, carrots)
-  - Tofu
-
-**API Endpoint:**
-```
-POST /api/leftover-recipes
-Request:
-{
-  "leftovers": ["rice", "chicken", "bok choy"],
-  "num_suggestions": 5
-}
-
-Response:
-{
-  "suggestions": [
-    {
-      "recipe": {...},
-      "leftovers_used": ["rice", "chicken"],
-      "leftovers_coverage": "66%",
-      "additional_ingredients": ["soy sauce", "eggs", "scallions"]
-    }
-  ]
-}
-```
-
----
-
-#### F5: Simple Web Interface
+#### F4: Simple Web Interface
 **Description:** Clean, mobile-friendly web UI
 
 **Functional Requirements:**
 
 **Pages:**
-1. **Home / Meal Planner** (Main page)
+1. **Taste Profile Onboarding** (First visit only — 5 quick questions)
+   - Triggered automatically on first visit before showing homepage
+   - Questions:
+     1. Noodles or rice? (Noodles / Rice / Both equally)
+     2. Spice tolerance? (1 = Very Mild → 5 = Very Spicy)
+     3. Any ingredients to avoid? (free text: e.g. "no seafood, no nuts")
+     4. How many people eating? (1 / 2 / 3-4 / 5+)
+     5. Helper's cooking skill? (Beginner / Intermediate / Advanced)
+   - Saved to `localStorage` immediately
+   - Silently injected into every AI query — user never has to repeat themselves
+   - Skippable, editable any time in Settings
+   - Empty state prompt if profile not set: *"Tell me what you like once, and I'll remember forever."*
+
+2. **Home / Meal Planner** (Main page)
    - Large search/input box for natural language query
    - Quick action buttons:
      - "Plan Tonight's Dinner"
      - "Plan This Week (7 Days)"
-     - "Use My Leftovers"
    - Preset preference chips:
      - Cuisines: Sichuan | Cantonese | Hunan | Shanghai
      - Spice: Mild | Medium | Hot
      - Time: <30min | 30-60min
      - Diet: Vegetarian | No Seafood | No Nuts
+   - "Your Taste Profile" pill showing active preferences (e.g. "🌶️ Spicy · Noodles · 4 pax")
+   - Recent Plans section (last 5 meals, from localStorage history)
 
-2. **Results Page**
+3. **Results Page**
+   - Loading state with personality message: *"Finding your perfect Sichuan dinner..."*
    - Recipe cards showing:
-     - Recipe photo (from video thumbnail)
+     - Video thumbnail (loaded via `img.youtube.com/vi/{video_id}/0.jpg` — no API key)
      - Name (EN + 中文)
+     - Channel name (trust signal: e.g. "Chinese Cooking Demystified")
      - Cuisine badge
      - Spice indicator (🌶️🌶️)
      - Time & difficulty icons
      - "Select" button
+     - **"Not this one 🔄" button** — dismiss and fetch next suggestion inline
+     - **Thumbs up 👍 / Thumbs down 👎** shown after meal is cooked (prompted next visit)
    - Shopping list panel (right sidebar on desktop, bottom sheet on mobile)
-   - "Send to WhatsApp" button
+   - **WhatsApp Helper Card** (first-class feature — see F5)
    - "Print" button
 
-3. **Recipe Detail Page**
+4. **Recipe Detail Page**
    - Full recipe information
-   - Embedded YouTube video
+   - Embedded YouTube video (verified link)
+   - **Serving size scaler**: default 4, adjust to 1/2/3/4/6/8 — all ingredient quantities update automatically
    - Ingredients list with checkboxes
    - Step-by-step instructions
-   - "How to enable subtitles" instruction box
+   - "How to enable subtitles" instruction box (📺 Guide for helper: Click ⚙️ → Subtitles → Auto-translate)
    - "Add to Meal Plan" button
+   - Fallback if video unavailable: show *"Search YouTube: {recipe_name} {channel_name}"* link
 
-4. **Settings Page**
-   - Save dietary preferences
+5. **Settings Page**
+   - Edit Taste Profile (same 5 questions from onboarding)
    - Set default constraints
+   - Clear meal history
    - Language preference (English/Chinese)
 
 **UI/UX Requirements:**
 - Mobile-first design (70% of users on mobile)
-- Support iOS Safari, Chrome, Samsung Internet
+- Support iOS Safari, Chrome, Samsung Internet (PWA-installable for home screen shortcut)
 - Fast loading (<2s)
 - Offline-friendly (cache recipes)
 - Clean, minimal design (like Airbnb/Notion)
@@ -464,19 +463,75 @@ Spacing:
 
 ---
 
-### Should Have (P1 - Nice to Have in MVP 1.0, OK to defer)
+#### F5: WhatsApp Helper Card (P0 - First-Class Feature)
+**Description:** A formatted message the employer sends directly to their helper via WhatsApp
 
-#### F6: User Accounts (Simple)
-- No login required for trial (localStorage preferences)
-- Optional email signup to sync across devices
-- Save meal history
-- Favorite recipes
+**Why First-Class:** This is the core end-to-end workflow — employer plans meal → sends card to helper → helper cooks. It is not a secondary export button.
 
-#### F7: Recipe Rating & Feedback
+**Functional Requirements:**
+- Prominent "Send to Helper" button on Results and Recipe Detail pages
+- Card content:
+  - Recipe name (English + Chinese characters)
+  - Verified YouTube link (opens directly)
+  - Serving size (reflects scaler selection)
+  - Top 5-6 key ingredients with quantities
+  - 3-4 simplified cooking steps in plain English
+  - Subtitle tip: *"YouTube > Settings > Subtitles > Auto-translate"*
+- Opens native WhatsApp with pre-filled message (`wa.me?text=...`)
+- Also copyable as plain text for other messaging apps
+
+**Example Output:**
+```
+Tonight's Dinner: Kung Pao Chicken (宫保鸡丁)
+Medium Spicy x 35 min x 4 servings
+
+Ingredients:
+- Chicken thigh: 500g (cut into cubes)
+- Dried red chilies: 8 pcs
+- Peanuts: 100g (roasted)
+- Soy sauce, black vinegar, sugar
+
+Video: https://youtube.com/watch?v=...
+(Tip: Settings > Subtitles > Auto-translate to Burmese/English)
+
+Steps:
+1. Cut chicken, marinate with soy sauce 10 min
+2. Fry chilies + peppercorns in hot oil 30 sec
+3. Add chicken, garlic, ginger, stir-fry 5 min
+4. Add peanuts + sauce, toss and serve hot
+```
+
+---
+
+#### F6: Meal History & Avoid Repeats (P0)
+**Description:** Track recent meals locally to prevent repetition
+
+**Functional Requirements:**
+- Store last 14 days of planned/selected meals in `localStorage`
+- Inject meal history into every AI query: *"Do not suggest these recipes again this week: [list]"*
+- Show "Recent Plans" on homepage (last 5 meals with date)
+- User can manually clear history from Settings
+- No backend or user account needed — pure `localStorage`
+
+---
+
+### Should Have (P1 - Defer to post-MVP)
+
+#### F7: User Accounts (Simple)
+- Optional email signup to sync preferences and history across devices
+- Currently handled by localStorage — sufficient for MVP
+- Favorite recipes (cloud-synced)
+
+#### F8: Full Recipe Feedback
 - After meal is cooked, ask "How was it?"
-- 5-star rating
-- Simple feedback form
-- Use to improve future suggestions
+- 5-star rating + simple feedback form
+- Use ratings to improve future suggestions (avoid low-rated recipes)
+
+#### F9: Leftover Optimizer (Explicitly Deferred)
+- Accept list of leftover ingredients
+- Search recipes using those ingredients
+- Prioritize recipes that use the most leftovers
+- Deferred to keep MVP scope lean; revisit after validating core flows
 
 ---
 
@@ -487,7 +542,7 @@ Spacing:
 - ❌ Nutrition calculations
 - ❌ Cost tracking over time
 - ❌ Social features / recipe sharing
-- ❌ Mobile app (web only)
+- ❌ Native mobile app (web only; PWA for home-screen install)
 - ❌ Multi-language UI (English only)
 - ❌ Helper-specific interface
 - ❌ Voice input
@@ -509,32 +564,36 @@ Spacing:
                   ↓
 ┌─────────────────────────────────────────────────────┐
 │              FRONTEND (Next.js / React)             │
-│  - Responsive web app                               │
-│  - State management (Zustand/Redux)                 │
+│  - Responsive web app (mobile-first, PWA)           │
+│  - Taste profile in localStorage                    │
+│  - Meal history (14 days) in localStorage           │
+│  - State management (Zustand)                       │
 │  - API client                                       │
 └─────────────────┬───────────────────────────────────┘
-                  │ REST API
+                  │ REST API (taste profile + history injected)
                   ↓
 ┌─────────────────────────────────────────────────────┐
-│             BACKEND API (FastAPI)                   │
+│             BACKEND API (FastAPI / Render)          │
 │                                                     │
 │  Endpoints:                                         │
 │  - POST /api/plan-meal                              │
 │  - POST /api/generate-shopping-list                 │
-│  - POST /api/leftover-recipes                       │
 │  - GET  /api/recipes/{id}                           │
 │  - POST /api/search-recipes                         │
+│  - POST /api/validate-video (oEmbed check)          │
 │                                                     │
 └───┬─────────────────────┬───────────────────────────┘
     │                     │
     ↓                     ↓
 ┌─────────────┐   ┌──────────────────────────────┐
-│  ChromaDB   │   │    DeepSeek API              │
-│  (Vector    │   │    (LLM for planning)        │
+│  ChromaDB   │   │  OpenAI API (GPT-4o-mini)    │
+│  (Vector    │   │  (LLM for meal planning)     │
 │   Store)    │   │                              │
-│             │   │    Input: Augmented prompt   │
-│  - 500      │   │    Output: Meal suggestions  │
-│    recipes  │   │    Cost: ~$0.001 per query   │
+│             │   │  Input: Augmented prompt     │
+│  - 500      │   │  + taste profile             │
+│    recipes  │   │  + meal history              │
+│  - Verified │   │  Output: Meal suggestions    │
+│    YT links │   │  Cost: ~$0.0002 per query    │
 │  - Semantic │   │                              │
 │    search   │   └──────────────────────────────┘
 │             │
@@ -555,8 +614,8 @@ Spacing:
 - Framework: FastAPI (Python 3.10+)
 - Vector DB: ChromaDB 0.4.x
 - Embeddings: sentence-transformers (all-MiniLM-L6-v2)
-- LLM: DeepSeek API
-- Hosting: Railway, Render, or Fly.io ($5-10/month)
+- LLM: OpenAI API (GPT-4o-mini) — ~$0.0002/query, ~$5-10/month at MVP scale
+- Hosting: Render ($7/month)
 
 **Database:**
 - Vector Store: ChromaDB (embedded, file-based)
@@ -583,32 +642,36 @@ User Journey:
 
 System Processing:
 5. Frontend sends to: POST /api/plan-meal
+   (includes taste profile + last 7 days meal history from localStorage)
 6. Backend:
    a. Parses query for constraints (cuisine: Sichuan, spice: medium)
-   b. Generates query embedding
-   c. Searches ChromaDB for relevant recipes
-   d. Retrieves top 15 Sichuan recipes
-   e. Builds augmented prompt for DeepSeek
-   f. Sends to DeepSeek API
-   g. DeepSeek selects best 3 recipes
+   b. Merges with taste profile (user loves noodles + spicy) and history (avoid repeats)
+   c. Generates query embedding
+   d. Searches ChromaDB for relevant recipes
+   e. Retrieves top 15 Sichuan recipes
+   f. Builds augmented prompt for OpenAI GPT-4o-mini
+   g. OpenAI selects best 3 recipes (respecting profile + history)
    h. Returns JSON response
 
 7. Frontend displays:
-   - 3 recipe cards
+   - 3 recipe cards (with YouTube thumbnails loaded from img.youtube.com)
+   - "Not this one" re-roll button on each card
    - Shopping list panel (collapsed initially)
-   
+
 User Actions:
 8. User clicks "Kung Pao Chicken" card
 9. Sees recipe detail page with:
-   - YouTube video
-   - Ingredients
+   - Verified YouTube video
+   - Serving size scaler
+   - Ingredients (auto-scaled)
    - Instructions
    - "Generate Shopping List" button
-   
+
 10. User clicks "Generate Shopping List"
 11. Shopping list appears
-12. User clicks "Send to WhatsApp"
-13. Opens WhatsApp with pre-filled message
+12. User clicks "Send to Helper"
+13. Opens WhatsApp with pre-filled Helper Card
+14. Next visit: prompted "Did you cook Kung Pao Chicken? thumbs up / thumbs down"
 
 Total time: <2 minutes
 ```
@@ -626,7 +689,7 @@ Total time: <2 minutes
 
 System:
 5. Backend retrieves 35-50 recipes (diverse)
-6. DeepSeek selects best 7 (balancing variety)
+6. OpenAI GPT-4o-mini selects best 7 (balancing variety, respects taste profile + history)
 7. Returns meal plan with:
    - Monday: Kung Pao Chicken (Sichuan)
    - Tuesday: Cantonese Steamed Fish (Cantonese)
@@ -650,29 +713,57 @@ System:
 Total time: 3-4 minutes
 ```
 
-### Flow 3: Leftover Optimization
+### Flow 3: First-Time Taste Profile Onboarding
 
 ```
-1. User clicks "Use My Leftovers"
-2. Input field: "What ingredients do you have?"
-3. User types: "rice, chicken, bok choy"
-4. Clicks "Find Recipes"
+1. New user opens app for first time
+2. Onboarding screen appears (5 quick questions):
+   - "Noodles or rice?" → User selects: Noodles
+   - "Spice level (1-5)?" → User selects: 4 (Very Spicy)
+   - "Anything to avoid?" → User types: "no seafood"
+   - "How many eating?" → User selects: 4
+   - "Helper's skill level?" → User selects: Intermediate
+3. Clicks "Save & Start Planning"
 
 System:
-5. Searches recipes containing those ingredients
-6. Ranks by coverage (how many leftovers used)
-7. Returns 5 suggestions
+4. Saves profile to localStorage:
+   {
+     preference_noodles: true,
+     spice_level: 4,
+     avoids: ["seafood"],
+     servings: 4,
+     helper_skill: "intermediate"
+   }
+5. Every subsequent /api/plan-meal request silently includes:
+   "User profile: loves noodles, spicy food (level 4/5),
+    no seafood, 4 servings, intermediate helper.
+    Do not suggest: [meal history list]."
 
-8. Frontend shows:
-   - Recipe cards with "Uses: rice, chicken" tags
-   - "66% of your leftovers" indicator
-   - "Need to buy: eggs, soy sauce" list
+Result:
+- User types "dinner tonight" with no other info
+- Gets spicy noodle suggestions automatically
+- Never has to repeat preferences
+```
 
-9. User selects "Soy Sauce Fried Rice"
-10. Generates shopping list for missing items only
-11. Minimal shopping needed
+### Flow 4: Send WhatsApp Helper Card
 
-Total time: 1-2 minutes
+```
+1. User selects "Kung Pao Chicken" from results
+2. On Recipe Detail page, taps "Send to Helper"
+
+System:
+3. Frontend generates formatted card:
+   - Recipe name EN + ZH
+   - Verified YouTube link
+   - Key ingredients (scaled to 4 servings)
+   - 4 simplified steps
+   - Subtitle guide
+4. Opens native WhatsApp via wa.me?text=...
+
+Helper receives:
+   "Tonight's Dinner: Kung Pao Chicken (宫保鸡丁)..."
+
+Total time: 10 seconds after recipe selection
 ```
 
 ---
@@ -710,11 +801,19 @@ Total time: 1-2 minutes
 - Other: 10%
 
 **Scraping Tools:**
-- BeautifulSoup (Python)
-- YouTube API
-- Manual curation for quality
+- BeautifulSoup + requests (Python) — target sites with `schema.org/Recipe` JSON-LD for clean structured extraction
+- Manual curation for first 50-100 recipes (quality over quantity)
+- YouTube oEmbed verification script (run before loading into DB):
+  ```python
+  # verify_videos.py
+  import requests, json
+  def verify_youtube_url(url):
+      r = requests.get(f"https://www.youtube.com/oembed?url={url}&format=json")
+      return r.status_code == 200  # True = valid, False = dead/private
+  ```
+- Re-run monthly as health check; flag broken links for manual replacement
 
-**Setup Time:** 1-2 weeks (40-80 hours)
+**Setup Time:** 1-2 weeks (solo developer: prioritise quality over quantity)
 
 ---
 
@@ -758,80 +857,78 @@ Total time: 1-2 minutes
 ### Screen 2: Results Page
 
 ```
-┌────────────────────────────────────────────┐
-│  ← Back                         Print 🖨️   │
-├────────────────────────────────────────────┤
-│  Top 3 Suggestions for "Sichuan dinner"   │
-│                                            │
-│  ┌──────────────────────────────────────┐ │
-│  │  [Recipe Photo]                      │ │
-│  │                                      │ │
-│  │  Kung Pao Chicken 宫保鸡丁            │ │
-│  │  🌶️🌶️ Medium Spicy                  │ │
-│  │  ⏱️ 35 min  👨‍🍳 Medium               │ │
-│  │  Sichuan • Chicken • Peanuts         │ │
-│  │                                      │ │
-│  │         [Select This Recipe →]       │ │
-│  └──────────────────────────────────────┘ │
-│                                            │
-│  ┌──────────────────────────────────────┐ │
-│  │  [Recipe Photo]                      │ │
-│  │  Mapo Tofu 麻婆豆腐                   │ │
-│  │  🌶️🌶️🌶️ Hot & Numbing              │ │
-│  │  ⏱️ 25 min  👨‍🍳 Easy                 │ │
-│  └──────────────────────────────────────┘ │
-│                                            │
-│  [Show More Suggestions...]               │
-│                                            │
-│  📝 Shopping List (for selected)          │
-│  ┌──────────────────────────────────────┐ │
-│  │  • Chicken thigh: 500g               │ │
-│  │  • Dried chilies: 8 pieces           │ │
-│  │  • Peanuts: 100g                     │ │
-│  │  ... (4 more items)                  │ │
-│  │                                      │ │
-│  │  [📱 Send to WhatsApp]               │ │
-│  └──────────────────────────────────────┘ │
-└────────────────────────────────────────────┘
++--------------------------------------------+
+|  <- Back                        Print      |
++--------------------------------------------+
+|  "Finding your Sichuan dinner..."          |
+|  Top 3 for "Sichuan dinner"               |
+|                                            |
+|  +--------------------------------------+  |
+|  |  [YouTube Thumbnail]                 |  |
+|  |  Kung Pao Chicken (Gong Bao Ji Ding) |  |
+|  |  Chinese Cooking Demystified         |  |
+|  |  Medium Spicy  x  35 min  x  Medium  |  |
+|  |                                      |  |
+|  |  [Select ->]   [Not this one]        |  |
+|  +--------------------------------------+  |
+|                                            |
+|  +--------------------------------------+  |
+|  |  [YouTube Thumbnail]                 |  |
+|  |  Dan Dan Noodles (Dan Dan Mian)      |  |
+|  |  Souped Up Recipes                   |  |
+|  |  Hot & Numbing  x  25 min  x  Easy   |  |
+|  |                                      |  |
+|  |  [Select ->]   [Not this one]        |  |
+|  +--------------------------------------+  |
+|                                            |
+|  Shopping List (for selected recipe)       |
+|  +--------------------------------------+  |
+|  |  - Chicken thigh: 500g               |  |
+|  |  - Dried chilies: 8 pieces           |  |
+|  |  - Peanuts: 100g                     |  |
+|  |  ... (4 more items)                  |  |
+|  |                                      |  |
+|  |  [Send to Helper (WhatsApp)]         |  |
+|  +--------------------------------------+  |
++--------------------------------------------+
 ```
 
 ### Screen 3: Recipe Detail
 
 ```
-┌────────────────────────────────────────────┐
-│  ← Back to Results                         │
-├────────────────────────────────────────────┤
-│  Kung Pao Chicken 宫保鸡丁                  │
-│  Sichuan Cuisine • 35 min • Medium         │
-│                                            │
-│  ┌──────────────────────────────────────┐ │
-│  │                                      │ │
-│  │     [YouTube Video Player]           │ │
-│  │                                      │ │
-│  └──────────────────────────────────────┘ │
-│                                            │
-│  💡 To watch in Burmese/English:          │
-│     Click ⚙️ → Subtitles → Auto-translate │
-│                                            │
-│  📝 Ingredients (4 servings):              │
-│  ☐ Chicken thigh: 500g (cut in cubes)     │
-│  ☐ Dried red chilies: 8 pieces            │
-│  ☐ Sichuan peppercorns: 1 tsp             │
-│  ☐ Peanuts: 100g                          │
-│  ... (8 more)                             │
-│                                            │
-│  👨‍🍳 Instructions:                         │
-│  1. Cut chicken into 1-inch cubes (3 min) │
-│  2. Marinate with soy sauce (5 min)       │
-│  3. Heat wok on high heat...              │
-│  ... (8 more steps)                       │
-│                                            │
-│  [Generate Shopping List]                 │
-│  [Add to Meal Plan]                       │
-│  [⭐ Save to Favorites]                   │
-└────────────────────────────────────────────┘
++--------------------------------------------+
+|  <- Back to Results                        |
++--------------------------------------------+
+|  Kung Pao Chicken (Gong Bao Ji Ding)       |
+|  Sichuan x Chinese Cooking Demystified     |
+|                                            |
+|  +--------------------------------------+  |
+|  |     [YouTube Video Player]           |  |
+|  |     (verified link)                  |  |
+|  +--------------------------------------+  |
+|                                            |
+|  Helper tip: Settings > Subtitles >        |
+|  Auto-translate to Burmese/English         |
+|                                            |
+|  Servings: [-] 2 [+]  (quantities scale)  |
+|                                            |
+|  Ingredients (2 servings):                 |
+|  [ ] Chicken thigh: 250g (cubes)           |
+|  [ ] Dried red chilies: 4 pieces           |
+|  [ ] Sichuan peppercorns: 0.5 tsp          |
+|  [ ] Peanuts: 50g                          |
+|  ... (8 more, auto-scaled)                |
+|                                            |
+|  Instructions:                             |
+|  1. Cut chicken into cubes (3 min)         |
+|  2. Marinate with soy sauce (5 min)        |
+|  3. Heat wok on high heat...               |
+|  ... (8 more steps)                        |
+|                                            |
+|  [Generate Shopping List]                  |
+|  [Send to Helper (WhatsApp)]               |
++--------------------------------------------+
 ```
-
 ---
 
 ## 🧪 Testing Requirements
@@ -843,8 +940,11 @@ Total time: 1-2 minutes
 
 ### Integration Tests
 - RAG retrieval quality (relevant results)
-- DeepSeek API response format
+- OpenAI API response format and parsing
+- Taste profile injection correctness
+- YouTube oEmbed link validation
 - End-to-end meal planning flow
+- WhatsApp card generation format
 
 ### User Acceptance Testing
 - 10 beta users test all flows
@@ -895,15 +995,15 @@ Total time: 1-2 minutes
 ### MVP 1.0 (Month 1)
 - Domain: $15/year
 - Vercel hosting: $0 (free tier)
-- Backend hosting: $10/month (Render/Railway)
-- DeepSeek API: $20-50/month (depends on usage)
-- Total: ~$30-70/month
+- Backend hosting: $7/month (Render)
+- OpenAI API (GPT-4o-mini): $5-15/month (depends on usage; ~$0.0002/query)
+- Total: ~$15-25/month
 
 ### Scaling (100 users)
-- Backend: $50/month
+- Backend: $20/month (Render)
 - Database: $0 (ChromaDB embedded)
-- DeepSeek API: $100/month
-- Total: ~$150/month
+- OpenAI API (GPT-4o-mini): $20-30/month
+- Total: ~$45/month
 
 ---
 
@@ -959,24 +1059,37 @@ For development teams (or AI assistants):
 
 ### Frontend Team
 - [ ] Read UI mockups section
-- [ ] Implement responsive design (mobile-first)
+- [ ] Implement taste profile onboarding (first-visit, localStorage)
+- [ ] Implement meal history tracking (14 days, localStorage)
+- [ ] Implement "Not this one" re-roll button
+- [ ] Implement serving size scaler (auto-scale ingredient quantities)
+- [ ] Implement WhatsApp Helper Card generator
+- [ ] Implement thumbs up/down prompt (next-visit after meal)
+- [ ] Implement responsive design (mobile-first, PWA)
 - [ ] Integrate with backend API endpoints
-- [ ] Add loading states and error handling
+- [ ] Add personality loading states (e.g. "Finding your Sichuan dinner...")
+- [ ] Load YouTube thumbnails via img.youtube.com/vi/{id}/0.jpg
+- [ ] Add video fallback if link unavailable
 - [ ] Test on iOS Safari, Chrome, Samsung Internet
 
 ### Backend Team
 - [ ] Implement FastAPI endpoints per spec
-- [ ] Setup ChromaDB with 200+ recipes
-- [ ] Integrate DeepSeek API
+- [ ] Setup ChromaDB with 200+ recipes (verified YouTube links)
+- [ ] Run YouTube oEmbed verification script before loading data
+- [ ] Integrate OpenAI API (GPT-4o-mini)
+- [ ] Implement taste profile + meal history injection into prompts
 - [ ] Add request logging
-- [ ] Deploy to staging environment
+- [ ] Deploy to Render
 
 ### Data Team
-- [ ] Scrape 200-500 Chinese recipes
-- [ ] Format in specified JSON schema
+- [ ] Scrape 200-500 Chinese recipes from schema.org/Recipe blogs (Woks of Life, Red House Spice, China Sichuan Food)
+- [ ] Format in specified JSON schema (store video_id separately, not full URL)
+- [ ] Run YouTube oEmbed verification script on all video URLs before loading
+- [ ] Fix or remove any dead/private video links
 - [ ] Generate embeddings
 - [ ] Load into ChromaDB
 - [ ] Validate search quality
+- [ ] Set up monthly re-verification cron job
 
 ### QA Team
 - [ ] Test all user flows
@@ -1001,6 +1114,7 @@ For development teams (or AI assistants):
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-03-04 | Product Manager | Initial PRD for MVP 1.0 |
+| 1.1 | 2026-03-05 | Product Manager | Removed F4 Leftover Optimizer (deferred to P1); replaced DeepSeek with OpenAI GPT-4o-mini; added verified YouTube link requirement (oEmbed); promoted taste profile onboarding to P0; added meal history + avoid repeats (F6, localStorage); elevated WhatsApp Helper Card to first-class P0 feature (F5); added re-roll button, serving size scaler, thumbs feedback; updated architecture diagram, wireframes, budget, and handoff checklist |
 
 ---
 
